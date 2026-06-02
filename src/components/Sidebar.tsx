@@ -1,22 +1,20 @@
 import React, { useState } from 'react';
 import { 
   Sparkles, 
-  Compass, 
   Film, 
-  MessageSquare, 
   BarChart2, 
   Menu, 
   X, 
   Zap, 
   ChevronLeft,
   ChevronRight,
-  Award,
   LogOut,
-  FolderHeart
+  TrendingUp,
+  Swords
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-export type PageId = 'dashboard' | 'trending' | 'reel' | 'caption' | 'linkedin' | 'prediction' | 'analytics' | 'saved';
+export type PageId = 'dashboard' | 'trending' | 'growth_hacker' | 'content_studio' | 'analytics';
 
 interface SidebarProps {
   currentPage: PageId;
@@ -24,24 +22,6 @@ interface SidebarProps {
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
 }
-
-// Custom LinkedIn SVG Icon
-const LinkedInIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
-    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
-    <rect x="2" y="9" width="4" height="12" />
-    <circle cx="4" cy="4" r="2" />
-  </svg>
-);
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
   currentPage, 
@@ -67,12 +47,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems = [
     { id: 'dashboard' as PageId, label: 'Dashboard', icon: <Sparkles className="w-5 h-5" /> },
-    { id: 'trending' as PageId, label: 'Trending Topics', icon: <Compass className="w-5 h-5" /> },
-    { id: 'reel' as PageId, label: 'Reel Generator', icon: <Film className="w-5 h-5" /> },
-    { id: 'caption' as PageId, label: 'Caption Generator', icon: <MessageSquare className="w-5 h-5" /> },
-    { id: 'linkedin' as PageId, label: 'LinkedIn Posts', icon: <LinkedInIcon className="w-5 h-5" /> },
-    { id: 'prediction' as PageId, label: 'Virality Predict', icon: <Award className="w-5 h-5" /> },
-    { id: 'saved' as PageId, label: 'My Content', icon: <FolderHeart className="w-5 h-5" /> },
+    { id: 'trending' as PageId, label: 'Trending Topics', icon: <TrendingUp className="w-5 h-5" /> },
+    { id: 'growth_hacker' as PageId, label: 'AI Growth Hacker', icon: <Swords className="w-5 h-5" /> },
+    { id: 'content_studio' as PageId, label: 'Content Studio', icon: <Film className="w-5 h-5" /> },
     { id: 'analytics' as PageId, label: 'Analytics', icon: <BarChart2 className="w-5 h-5" /> },
   ];
 

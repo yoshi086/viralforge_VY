@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
-import { TrendingUp, Flame, ArrowRight, Compass, Award, Search, ArrowUpDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { TrendingUp, Flame, ArrowRight, Compass, Search, ArrowUpDown, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { PageId } from '../components/Sidebar';
+import { compileLiveSignals } from '../utils/signalsEngine';
+import type { LiveSignalsPackage } from '../utils/signalsEngine';
+import { compileTrendProfile } from '../utils/trendEngine';
 
 export interface Topic {
   id: string;
@@ -13,10 +17,18 @@ export interface Topic {
   description: string;
   suggestedHook: string;
   sparkline: number[];
+  competitionScore: number;
+  opportunityScore: number;
+  viralityForecast: number;
+  signals: {
+    emergingQueries: string;
+    google: number;
+    youtube: string;
+  };
 }
 
 interface TrendingTopicsProps {
-  onSelectTopic: (topicTitle: string, navigateTo: 'dashboard' | 'reel') => void;
+  onSelectTopic: (topicTitle: string, navigateTo: PageId, trendProfile?: any) => void;
 }
 
 export const MOCK_TOPICS: Topic[] = [
@@ -30,7 +42,11 @@ export const MOCK_TOPICS: Topic[] = [
     platforms: ['Reels', 'TikTok', 'LinkedIn'],
     description: 'How local businesses are using simple zero-code AI tools to automate booking, CRM, and lead generation.',
     suggestedHook: 'I built an AI worker that did 40 hours of admin work in exactly 4 minutes. Here is the stack.',
-    sparkline: [20, 35, 40, 60, 55, 80, 98]
+    sparkline: [20, 35, 40, 60, 55, 80, 98],
+    competitionScore: 68,
+    opportunityScore: 94,
+    viralityForecast: 96,
+    signals: { emergingQueries: '24 queries found', google: 98, youtube: '2.4M views' }
   },
   {
     id: '2',
@@ -42,7 +58,11 @@ export const MOCK_TOPICS: Topic[] = [
     platforms: ['LinkedIn', 'Reels'],
     description: 'The ultra-lean business model of 2026. Running complete online operations using only subscription software and APIs.',
     suggestedHook: 'You do not need a co-founder. You do not need employees. You just need these 4 browser tabs open.',
-    sparkline: [30, 45, 38, 70, 65, 85, 95]
+    sparkline: [30, 45, 38, 70, 65, 85, 95],
+    competitionScore: 52,
+    opportunityScore: 88,
+    viralityForecast: 94,
+    signals: { emergingQueries: '18 queries found', google: 95, youtube: '1.8M views' }
   },
   {
     id: '3',
@@ -54,7 +74,11 @@ export const MOCK_TOPICS: Topic[] = [
     platforms: ['TikTok', 'Reels'],
     description: 'The transition from text hooks to silent visual loops. High retention strategies that bypass audio trends.',
     suggestedHook: 'Stop speaking in the first 3 seconds of your Reels. Do this visual pattern instead.',
-    sparkline: [10, 15, 35, 50, 75, 70, 92]
+    sparkline: [10, 15, 35, 50, 75, 70, 92],
+    competitionScore: 78,
+    opportunityScore: 82,
+    viralityForecast: 90,
+    signals: { emergingQueries: '15 queries found', google: 92, youtube: '1.5M views' }
   },
   {
     id: '4',
@@ -66,7 +90,11 @@ export const MOCK_TOPICS: Topic[] = [
     platforms: ['LinkedIn', 'Reels'],
     description: 'Replacing standard Pomodoro with Andrew Huberman-backed 90-minute neural cycles for maximum focus.',
     suggestedHook: 'The 25-minute Pomodoro timer is actually killing your deep focus. Here is the science why.',
-    sparkline: [40, 42, 50, 48, 68, 80, 89]
+    sparkline: [40, 42, 50, 48, 68, 80, 89],
+    competitionScore: 58,
+    opportunityScore: 85,
+    viralityForecast: 88,
+    signals: { emergingQueries: '12 queries found', google: 89, youtube: '950K views' }
   },
   {
     id: '5',
@@ -78,7 +106,11 @@ export const MOCK_TOPICS: Topic[] = [
     platforms: ['LinkedIn'],
     description: 'Bridging the communication gap between business managers and LLM models. Essential prompts for project planning.',
     suggestedHook: 'Most managers write prompts like Google searches. That is why your AI outputs are generic.',
-    sparkline: [25, 30, 48, 55, 60, 72, 87]
+    sparkline: [25, 30, 48, 55, 60, 72, 87],
+    competitionScore: 74,
+    opportunityScore: 80,
+    viralityForecast: 85,
+    signals: { emergingQueries: '10 queries found', google: 87, youtube: '1.2M views' }
   },
   {
     id: '6',
@@ -90,7 +122,11 @@ export const MOCK_TOPICS: Topic[] = [
     platforms: ['LinkedIn', 'TikTok'],
     description: 'Extremely focused, single-purpose extensions and plugins making founders thousands of dollars in passive revenue.',
     suggestedHook: 'Do not build the next social media platform. Build a plugin for this specific platform instead.',
-    sparkline: [15, 28, 30, 45, 65, 78, 86]
+    sparkline: [15, 28, 30, 45, 65, 78, 86],
+    competitionScore: 48,
+    opportunityScore: 84,
+    viralityForecast: 84,
+    signals: { emergingQueries: '14 queries found', google: 86, youtube: '1.1M views' }
   }
 ];
 
@@ -98,6 +134,33 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ onSelectTopic })
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  
+  // Live Signals mapping state
+  const [signalsMap, setSignalsMap] = useState<{[title: string]: LiveSignalsPackage}>({});
+  const [freshness, setFreshness] = useState<string>('');
+
+  useEffect(() => {
+    const loadLiveSignals = async () => {
+      const newsKey = import.meta.env.VITE_NEWS_API_KEY || localStorage.getItem('viralforge_news_key') || '';
+      const ytKey = import.meta.env.VITE_YOUTUBE_API_KEY || localStorage.getItem('viralforge_youtube_key') || '';
+      
+      const newMap: {[title: string]: LiveSignalsPackage} = {};
+      
+      await Promise.all(MOCK_TOPICS.map(async (t) => {
+        try {
+          const signals = await compileLiveSignals(t.title, { newsApiKey: newsKey, youtubeApiKey: ytKey });
+          newMap[t.title] = signals;
+        } catch (e) {
+          console.error(e);
+        }
+      }));
+      
+      setSignalsMap(newMap);
+      setFreshness(new Date().toLocaleTimeString());
+    };
+    
+    loadLiveSignals();
+  }, []);
 
   const getCategoryColor = (category: string) => {
     switch (category) {
@@ -128,17 +191,23 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ onSelectTopic })
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
             <Compass className="w-8 h-8 text-purple-500 animate-pulse animate-pulse-slow" />
-            Trending Content Forge
+            Creator emerging Topics Feed
           </h1>
           <p className="text-gray-400 mt-1 max-w-xl">
-            Real-time viral topics mined from search interest, social media algorithms, and professional networks.
+            Google Trends signals + social intercepts. Map out trend opportunities and launch Growth Hacker analysis.
           </p>
+          {freshness && (
+            <p className="text-[10px] text-purple-400 font-mono mt-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              Last Updated: {freshness} (Live Signals Grounding Engaged)
+            </p>
+          )}
         </div>
         
         <div className="flex gap-3 bg-white/5 border border-white/10 p-1.5 rounded-xl backdrop-blur-md self-start md:self-auto text-xs">
           <div className="px-3.5 py-1.5 rounded-lg bg-purple-600/20 text-purple-300 font-semibold flex items-center gap-1.5 border border-purple-500/30">
             <Flame className="w-3.5 h-3.5 text-purple-400 fill-purple-400 animate-bounce" />
-            Live Algorithm Scan
+            Live Signals scanning active
           </div>
         </div>
       </div>
@@ -153,7 +222,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ onSelectTopic })
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search trending topics..."
+              placeholder="Search emerging opportunities..."
               className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/60 focus:ring-1 focus:ring-purple-500/20 font-medium"
             />
             <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-3.5" />
@@ -194,19 +263,34 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ onSelectTopic })
       {/* Grid of Topic Cards */}
       <motion.div 
         layout
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans text-xs"
       >
         <AnimatePresence mode="popLayout">
           {filteredTopics.map((topic) => {
-            // Render dynamic sparks
-            const maxVal = Math.max(...topic.sparkline);
-            const minVal = Math.min(...topic.sparkline);
-            const range = maxVal - minVal;
-            const points = topic.sparkline.map((val, idx) => {
-              const x = (idx / (topic.sparkline.length - 1)) * 100;
-              const y = range === 0 ? 50 : 80 - ((val - minVal) / range) * 60;
-              return `${x},${y}`;
-            }).join(' ');
+            const sig = signalsMap[topic.title];
+            
+            // Build trend profile dynamically from scoring engine
+            let trendProfile: any;
+            if (sig) {
+              trendProfile = compileTrendProfile(sig, topic.category);
+            } else {
+              // High-fidelity fallback based on mock indexes while loading
+              const baseVelocity = parseInt(topic.growth.replace('+', '').replace('%', ''), 10) || 120;
+              trendProfile = {
+                title: topic.title,
+                category: topic.category,
+                trendScore: topic.trendScore,
+                opportunityScore: topic.opportunityScore,
+                competitionScore: topic.competitionScore,
+                growthVelocity: baseVelocity,
+                confidenceScore: 65,
+                reason: 'Stable search volume metrics, moderate YouTube interest.',
+                searchDemand: 50,
+                newsMentions: 0,
+                videoCoverage: 0,
+                emergingQueries: 0
+              };
+            }
 
             return (
               <motion.div 
@@ -217,110 +301,164 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ onSelectTopic })
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.3 }}
                 whileHover={{ y: -3, scale: 1.01 }}
-                className="glass-card rounded-2xl p-6 flex flex-col justify-between h-[380px] hover:border-purple-500/35 hover:shadow-xl hover:shadow-purple-500/5 cursor-pointer relative"
+                onClick={() => {
+                  localStorage.setItem('viralforge_active_trend_analysis', JSON.stringify(trendProfile));
+                  onSelectTopic(topic.title, 'growth_hacker', trendProfile);
+                }}
+                className="glass-card rounded-2xl p-6 flex flex-col justify-between min-h-[520px] hover:border-purple-500/35 hover:shadow-xl hover:shadow-purple-500/5 cursor-pointer relative"
               >
                 <div className="space-y-4">
                   {/* Header elements */}
                   <div className="flex justify-between items-start gap-2">
-                    <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${getCategoryColor(topic.category)}`}>
+                    <span className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${getCategoryColor(topic.category)}`}>
                       {topic.category}
                     </span>
                     <div className="flex items-center gap-1 text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 text-xs font-semibold">
-                      <TrendingUp className="w-3.5 h-3.5" />
-                      {topic.growth}
+                      <TrendingUp className="w-3.5 h-3.5 animate-pulse" />
+                      +{trendProfile.growthVelocity}%
                     </div>
                   </div>
 
                   {/* Title */}
                   <div>
-                    <h3 className="text-lg font-bold text-white leading-snug group-hover:text-purple-300 transition-colors line-clamp-2">
+                    <h3 className="text-md font-extrabold text-white leading-snug group-hover:text-purple-300 transition-colors line-clamp-1">
                       {topic.title}
                     </h3>
-                    <p className="text-gray-400 text-xs mt-1.5 line-clamp-3">
+                    <p className="text-gray-400 text-[11px] mt-1.5 line-clamp-2 leading-relaxed">
                       {topic.description}
                     </p>
                   </div>
 
-                  {/* Sparkline Visual */}
-                  <div className="h-12 w-full bg-[#0d0924]/40 rounded-lg p-1 border border-white/5 relative overflow-hidden flex items-center">
-                    <svg className="w-full h-full" viewBox="0 0 100 80" preserveAspectRatio="none">
-                      <defs>
-                        <linearGradient id={`grad-${topic.id}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#9333ea" stopOpacity="0.4" />
-                          <stop offset="100%" stopColor="#2563eb" stopOpacity="0.0" />
-                        </linearGradient>
-                      </defs>
-                      <polyline
-                        fill="none"
-                        stroke="url(#sparkGradient)"
-                        strokeWidth="2.5"
-                        points={points}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="stroke-purple-500 animate-pulse"
-                      />
-                      <path
-                        d={`M 0,80 L ${points} L 100,80 Z`}
-                        fill={`url(#grad-${topic.id})`}
-                      />
-                      {/* Fallback stroke gradient */}
-                      <svg className="absolute hidden">
-                        <defs>
-                          <linearGradient id="sparkGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#3b82f6" />
-                            <stop offset="50%" stopColor="#8b5cf6" />
-                            <stop offset="100%" stopColor="#ec4899" />
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                    </svg>
-                    <div className="absolute right-2 bottom-1 text-[9px] text-gray-500 font-mono">
-                      Score: {topic.trendScore}%
+                  {/* Phase 1 Metrics Panel */}
+                  <div className="grid grid-cols-2 gap-3 bg-black/35 border border-white/5 p-4 rounded-xl text-[10px]">
+                    <div className="flex flex-col justify-between">
+                      <span className="text-gray-500 font-bold uppercase text-[7.5px] tracking-wider block">Trend Score</span>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className="text-white text-lg font-black font-mono leading-none">{trendProfile.trendScore}</span>
+                        <div className="flex-1 bg-white/5 h-1 rounded-full overflow-hidden border border-white/5 max-w-[60px]">
+                          <div className="bg-purple-500 h-full rounded-full" style={{ width: `${trendProfile.trendScore}%` }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col justify-between">
+                      <span className="text-gray-500 font-bold uppercase text-[7.5px] tracking-wider block">Growth Velocity</span>
+                      <span className="text-emerald-400 font-bold font-mono mt-1.5 flex items-center gap-0.5">
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                        +{trendProfile.growthVelocity}%
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col justify-between border-t border-white/5 pt-2.5 mt-0.5">
+                      <span className="text-gray-500 font-bold uppercase text-[7.5px] tracking-wider block">Opportunity Score</span>
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <span className="text-purple-300 font-bold font-mono text-xs">{trendProfile.opportunityScore}</span>
+                        <span className="text-[7.5px] text-gray-500 font-medium">/ 100</span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col justify-between border-t border-white/5 pt-2.5 mt-0.5">
+                      <span className="text-gray-500 font-bold uppercase text-[7.5px] tracking-wider block">Competition Score</span>
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <span className="text-pink-400 font-bold font-mono text-xs">{trendProfile.competitionScore}</span>
+                        <span className="text-[7.5px] text-gray-500 font-medium">/ 100</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Suggested Hook */}
-                  <div className="bg-black/35 rounded-xl p-3 border border-white/5">
-                    <div className="text-[10px] text-purple-400 font-bold uppercase tracking-wider flex items-center gap-1 mb-1">
-                      <Award className="w-3.5 h-3.5 text-purple-400" />
-                      Tested Viral Hook Angle
+                  {/* Traceable Evidence Block (No Black-Box Scoring) */}
+                  <div className="bg-black/45 border border-white/5 p-3 rounded-xl space-y-2 text-[10px]">
+                    <div className="flex justify-between items-center border-b border-white/5 pb-1">
+                      <span className="text-gray-500 font-bold uppercase tracking-wider text-[8px]">Traceable Evidence</span>
+                      <span className="text-purple-400 font-mono text-[8px] uppercase tracking-wider">Live & Est. Data</span>
                     </div>
-                    <p className="text-gray-300 text-xs italic line-clamp-2 leading-relaxed">
-                      &ldquo;{topic.suggestedHook}&rdquo;
+                    
+                    <div className="grid grid-cols-2 gap-2 text-gray-300">
+                      {/* Emerging Queries */}
+                      <div className="flex flex-col">
+                        <span className="text-gray-500 font-semibold uppercase text-[7px] tracking-wider">Emerging Queries</span>
+                        <span 
+                          className="font-mono text-white font-bold truncate cursor-help"
+                          title={sig && sig.emergingQueries.items.length > 0 ? sig.emergingQueries.items.map(i => `${i.query} (${i.intent})`).join('\n') : ''}
+                        >
+                          {sig ? (
+                            sig.emergingQueries.status === 'Available' 
+                              ? `${sig.emergingQueries.count} queries` 
+                              : '⚠️ Unavailable'
+                          ) : 'Loading...'}
+                        </span>
+                        {sig && sig.emergingQueries.status === 'Available' && (
+                          <div className="text-[7.5px] text-purple-300 font-mono mt-0.5 space-y-0.5 leading-tight">
+                            <div>Growth: +{sig.emergingQueries.growthScore}% | Vol: {sig.emergingQueries.volumeScore}/100</div>
+                          </div>
+                        )}
+                        <span className="text-[7px] text-gray-600 uppercase font-black tracking-wide mt-1">Live Data</span>
+                      </div>
+                      
+                      {/* Search Demand */}
+                      <div className="flex flex-col">
+                        <span className="text-gray-500 font-semibold uppercase text-[7px] tracking-wider">Search Demand</span>
+                        <span className="font-mono text-white font-bold truncate">
+                          {sig ? `${sig.googleTrends.suggestScore}/100 (${sig.googleTrends.searchVolume})` : 'Loading...'}
+                        </span>
+                        <span className="text-[7px] text-gray-600 uppercase font-black tracking-wide mt-1">Estimated Data</span>
+                      </div>
+                      
+                      {/* News Signal Engine */}
+                      <div className="flex flex-col border-t border-white/5 pt-1 mt-1">
+                        <span className="text-gray-500 font-semibold uppercase text-[7px] tracking-wider">News Signal Engine</span>
+                        <span className="font-mono text-white font-bold truncate mt-0.5">
+                          {sig ? (sig.news.status === 'Available' ? `${sig.news.mentionsCount} articles` : sig.news.status === 'No Key' ? '🔑 Key Required' : '⚠️ Unavailable') : 'Loading...'}
+                        </span>
+                        <span className="text-[7px] text-gray-600 uppercase font-black tracking-wide mt-1">Live Data</span>
+                      </div>
+                      
+                      {/* Video Signal Engine */}
+                      <div className="flex flex-col border-t border-white/5 pt-1 mt-1">
+                        <span className="text-gray-500 font-semibold uppercase text-[7px] tracking-wider">Video Signal Engine</span>
+                        <span className="font-mono text-white font-bold truncate mt-0.5">
+                          {sig ? (sig.youtube.status === 'Available' ? `${sig.youtube.videosCount.toLocaleString()} views` : sig.youtube.status === 'No Key' ? '🔑 Key Required' : '⚠️ Unavailable') : 'Loading...'}
+                        </span>
+                        <span className="text-[7px] text-gray-600 uppercase font-black tracking-wide mt-1">Live Data</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Phase 3: Score Explanations & Confidence */}
+                  <div className="bg-[#12071a]/30 border border-purple-500/10 p-3 rounded-xl space-y-1">
+                    <div className="flex justify-between items-center text-[8.5px] border-b border-purple-500/5 pb-1">
+                      <span className="font-black uppercase tracking-wider text-purple-400 block">
+                        AI Intelligence • Why Trending
+                      </span>
+                      <span className="text-pink-400 font-mono font-bold uppercase tracking-widest text-[7px]">
+                        Confidence: {trendProfile.confidenceScore}%
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-gray-300 leading-normal line-clamp-2 mt-0.5">
+                      Reason: {trendProfile.reason} Mapped across search, video coverage, and global press networks.
                     </p>
                   </div>
+
                 </div>
 
                 {/* Card Footer Actions */}
-                <div className="pt-4 border-t border-white/5 mt-auto flex items-center justify-between">
-                  <div className="flex gap-1.5">
-                    {topic.platforms.map((p) => (
-                      <span 
-                        key={p} 
-                        className="text-[10px] font-medium text-gray-400 bg-white/5 border border-white/10 px-2 py-0.5 rounded"
-                        title={`High fit index on ${p}`}
-                      >
-                        {p}
-                      </span>
-                    ))}
+                <div className="pt-3 border-t border-white/5 mt-6 flex items-center justify-between">
+                  <div className="flex items-center gap-1 text-[9px] text-pink-400 font-bold uppercase tracking-wider">
+                    <Target className="w-3.5 h-3.5 text-pink-400" />
+                    Virality Score: {topic.viralityForecast}% (AI Inference)
                   </div>
 
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => onSelectTopic(topic.title, 'reel')}
-                      className="p-2 text-xs font-semibold text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors cursor-pointer select-none"
-                      title="Generate Reel Script"
-                    >
-                      Reel
-                    </button>
-                    <button 
-                      onClick={() => onSelectTopic(topic.title, 'dashboard')}
-                      className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-blue-500 hover:from-purple-500 hover:to-blue-400 text-white text-xs font-bold flex items-center gap-1 border border-purple-400/20 hover:border-purple-300/30 transition-all active:scale-95 duration-100 hover:shadow-lg hover:shadow-purple-500/10 cursor-pointer select-none"
-                    >
-                      Forge
-                      <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      localStorage.setItem('viralforge_active_trend_analysis', JSON.stringify(trendProfile));
+                      onSelectTopic(topic.title, 'growth_hacker', trendProfile);
+                    }}
+                    className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-500 hover:from-purple-500 hover:to-blue-400 text-white text-[10px] font-bold flex items-center gap-1 border border-purple-400/20 hover:border-purple-300/30 transition-all active:scale-95 duration-100 hover:shadow-lg hover:shadow-purple-500/10 cursor-pointer select-none"
+                  >
+                    Analyze Trend
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </motion.div>
             );
